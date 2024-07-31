@@ -1,0 +1,10 @@
+fpdf
+Pillow
+natsort
+PyPDF2
+
+selenium
+webdriver_manager
+requests
+pyyaml
+
