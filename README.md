@@ -37,3 +37,8 @@ this is an example to use selenium for scrape commics from a website, it demostr
 python .\spiders\mhz.py
 python .\spiders\92mh.py
 ```
+
+# example to scrape web novels from a website
+```bash
+python .\spiders\xiapiaosi.py
+```
