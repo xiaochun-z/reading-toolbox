@@ -94,7 +94,7 @@ def concatenate_audio(mp3_directory, output_folder, chapter_index):
             os.path.join(mp3_directory, mp3_file))
         combined += current_track
     combined.export(output_file_path, format="mp3")
-    logger.info(f"The concatenated MP3 has been saved to {output_file_path}")
+    logger.info(f"Merged {output_file_path}")
 
 
 def main():
