@@ -5,7 +5,9 @@ from pydub import AudioSegment
 import yaml
 import time
 import json
+import multiprocessing
 
+stop = False
 
 def load_completed_files():
     try:
@@ -45,7 +47,7 @@ def get_completed_files(mp3_directory):
     return sorted([f for f in os.listdir(mp3_directory) if f.endswith('.mp3')])
 
 
-def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3):
+def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3_directory):
     client = texttospeech.TextToSpeechClient()
     voice = texttospeech.VoiceSelectionParams(
         name="en-US-Journey-O",  # Use a specific voice name
@@ -55,23 +57,25 @@ def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3):
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3)
 
-    for attempt in range(5):
+    for attempt in range(1):
         try:
+            if stop:
+                break
             synthesis_input = texttospeech.SynthesisInput(text=text)
             response = client.synthesize_speech(
                 input=synthesis_input, voice=voice, audio_config=audio_config
 
             )
-            with open(mp3, "wb") as out:
+            sub_file = os.path.join(mp3_directory, f"{i}.mp3")
+            with open(sub_file, "wb") as out:
                 out.write(response.audio_content)
-            print(f"Audio content written to file '{
-                  mp3}' (Attempt {attempt+1})")
+            print(f"Audio content written to file '{sub_file}' (Attempt {attempt+1})")
             return
         except Exception as e:
             print(f"Error synthesizing text (Attempt {attempt+1}): {e}")
+            if attempt == 0:
+                raise
             time.sleep(3)
-            if attempt == 4:
-                raise  # Re-raise on the last attempt
 
 
 def concatenate_audio(mp3_directory, output_folder, chapter_index):
@@ -91,48 +95,51 @@ def concatenate_audio(mp3_directory, output_folder, chapter_index):
     print(f"The concatenated MP3 has been saved to {output_file_path}")
 
 
+def process_text(text, chapter_index, output_folder, i, mp3_directory):
+    try:
+        synthesize_and_save_text(
+            text, chapter_index, output_folder, i, mp3_directory)
+        return chapter_index, i
+    except Exception as e:
+        print(f"Failed to process paragraph {i}: {e}")
+        stop = True
+
+
 def main():
+    stop = False
     with open('data.yml', 'r', encoding='utf-8') as stream:
         data = yaml.safe_load(stream)
 
     output_folder = 'temp_output'
     completed_files = load_completed_files()
 
-    # while True:
     for chapter in data['chapter']:
+        if stop:
+            break
         chapter_index = chapter['chapter_index']
         texts = chapter['paragraphs']
-        mp3_directory = create_chapter_directory(
-            chapter_index, output_folder)
+        mp3_directory = create_chapter_directory(chapter_index, output_folder)
 
-        succeeded = True
-        # sort text by index
-        texts = sorted(texts, key=lambda x: x['index'])
-        for c in texts:
-            i = c['index']
-            # Check if chapter already completed based on files
-            mp3 = os.path.join(mp3_directory, f"{i}.mp3")
-            if i in completed_files and os.path.exists(mp3):
-                print(
-                    f"paragraph {i} already completed, skipping...")
-                continue
-            text = clean_text(c['text'])
-            try:
-                synthesize_and_save_text(
-                    text, chapter_index, output_folder, i, mp3)
-                completed_files[i] = True
-                save_completed_files(completed_files)
-            except Exception as e:
-                print(f"Failed to process paragraph {i}: {e}")
-                succeeded = False
-                break  # Break out of the inner loop for this chapter
+        try:
+            with multiprocessing.Pool(processes=3) as pool:
+                results = pool.starmap(
+                    process_text,
+                    [(clean_text(c['text']), chapter_index, output_folder, c['index'], mp3_directory)
+                        for c in texts if c['index'] not in completed_files]
+                )
+            for result in results:
+                if result is not None:
+                    completed_files[result[1]] = True
+                    print(f'finished {result[0]}->{result[1]}')
 
-        if not succeeded:
-            print(f'failed at {chapter_index}')
+            save_completed_files(completed_files)
+
+            concatenate_audio(mp3_directory, output_folder, chapter_index)
+        except KeyboardInterrupt:
+            print('interrupt received. Terminating pool...')
+            stop = True
+            pool.terminate()
             break
-        concatenate_audio(mp3_directory, output_folder, chapter_index)
-
-        # time.sleep(60)  # Sleep for 60 seconds before checking again
 
 
 if __name__ == "__main__":
