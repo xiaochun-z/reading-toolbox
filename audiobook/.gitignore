@@ -1,2 +1,5 @@
 *.txt
 your-private-key-generated-on-google.json
+completed_chapters.json
+temp_output/
+data.yml

@@ -3,6 +3,21 @@ import os
 import re
 from pydub import AudioSegment
 import yaml
+import time
+import json
+
+
+def load_completed_files():
+    try:
+        with open('completed_chapters.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def save_completed_files(completed_files):
+    with open('completed_chapters.json', 'w') as f:
+        json.dump(completed_files, f)
 
 
 def clean_text(text):
@@ -13,59 +28,57 @@ def clean_text(text):
     # Remove Unicode spaces and other non-ASCII characters
     text = re.sub(r'[^\x00-\x7F]+', ' ', text)
 
-    # Optionally, add any additional cleaning rules here
-
     return text
 
 
 # Load the service account credentials from the JSON file
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "your-private-key-generated-on-google.json"
 
-with open('data.yml', 'r', encoding='utf-8') as stream:
-    data = yaml.safe_load(stream)
 
-client = texttospeech.TextToSpeechClient()
-
-for chapter in data['chapter']:
-    chapter_index = chapter['chapter_index']
-    texts = chapter['paragraphs']
-    output_folder = 'temp_output'
+def create_chapter_directory(chapter_index, output_folder):
     mp3_directory = f'{output_folder}/chapter_{chapter_index}'
     os.makedirs(mp3_directory, exist_ok=True)
+    return mp3_directory
 
-    # sort text by index
-    texts = sorted(texts, key=lambda x: x['index'])
-    for c in texts:
-        i = c['index']
-        text = clean_text(c['text'])
-        # Set the text input to be synthesized
-        synthesis_input = texttospeech.SynthesisInput(text=text)
 
-        # Build the voice request, selecting a specific voice
-        voice = texttospeech.VoiceSelectionParams(
-            name="en-US-Journey-O",  # Use a specific voice name
-            language_code="en-US",
-            ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
-        )
+def get_completed_files(mp3_directory):
+    return sorted([f for f in os.listdir(mp3_directory) if f.endswith('.mp3')])
 
-        # Select the type of audio file you want returned
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3)
 
-        # Perform the text-to-speech request
-        response = client.synthesize_speech(
-            input=synthesis_input, voice=voice, audio_config=audio_config
-        )
+def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3_directory):
+    client = texttospeech.TextToSpeechClient()
+    voice = texttospeech.VoiceSelectionParams(
+        name="en-US-Journey-O",  # Use a specific voice name
+        language_code="en-US",
+        ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
+    )
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3)
 
-        # The response's audio_content is binary.
-        # save to output_{i}.mp3
-        sub_file = os.path.join(mp3_directory, f"{i}.mp3")
-        with open(sub_file, "wb") as out:
-            out.write(response.audio_content)
-        print(f"Audio content written to file '{sub_file}'")
+    for attempt in range(5):
+        try:
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            response = client.synthesize_speech(
+                input=synthesis_input, voice=voice, audio_config=audio_config
 
-    mp3_files = sorted([f for f in os.listdir(
-        mp3_directory) if f.endswith('.mp3')])
+            )
+            sub_file = os.path.join(mp3_directory, f"{i}.mp3")
+            with open(sub_file, "wb") as out:
+                out.write(response.audio_content)
+            print(f"Audio content written to file '{
+                  sub_file}' (Attempt {attempt+1})")
+            return
+        except Exception as e:
+            print(f"Error synthesizing text (Attempt {attempt+1}): {e}")
+            time.sleep(3)
+            if attempt == 4:
+                raise  # Re-raise on the last attempt
+
+
+def concatenate_audio(mp3_directory, output_folder, chapter_index):
+    mp3_files = get_completed_files(mp3_directory)
+    if len(mp3_files) == 0:
+        return
     combined = AudioSegment.empty()
     for mp3_file in mp3_files:
         current_track = AudioSegment.from_mp3(
@@ -74,3 +87,50 @@ for chapter in data['chapter']:
     output_file_path = f'{output_folder}/chapter_{chapter_index}.mp3'
     combined.export(output_file_path, format="mp3")
     print(f"The concatenated MP3 has been saved to {output_file_path}")
+
+
+def main():
+    with open('data.yml', 'r', encoding='utf-8') as stream:
+        data = yaml.safe_load(stream)
+
+    output_folder = 'temp_output'
+    completed_files = load_completed_files()
+
+    # while True:
+    for chapter in data['chapter']:
+        chapter_index = chapter['chapter_index']
+        texts = chapter['paragraphs']
+        mp3_directory = create_chapter_directory(
+            chapter_index, output_folder)
+
+        succeeded = True
+        # sort text by index
+        texts = sorted(texts, key=lambda x: x['index'])
+        for c in texts:
+            i = c['index']
+            # Check if chapter already completed based on files
+            if i in completed_files:
+                print(
+                    f"paragraph {i} already completed, skipping...")
+                continue
+            text = clean_text(c['text'])
+            try:
+                synthesize_and_save_text(
+                    text, chapter_index, output_folder, i, mp3_directory)
+                completed_files[i] = True
+                save_completed_files(completed_files)
+            except Exception as e:
+                print(f"Failed to process paragraph {i}: {e}")
+                succeeded = False
+                break  # Break out of the inner loop for this chapter
+
+        if not succeeded:
+            print(f'failed at {chapter_index}')
+            break
+        concatenate_audio(mp3_directory, output_folder, chapter_index)
+
+        # time.sleep(60)  # Sleep for 60 seconds before checking again
+
+
+if __name__ == "__main__":
+    main()
