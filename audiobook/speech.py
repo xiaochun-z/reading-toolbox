@@ -5,6 +5,12 @@ from pydub import AudioSegment
 import yaml
 import time
 import json
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.FileHandler("speech.log"), logging.StreamHandler(sys.stdout)], level=logging.INFO)
 
 
 def load_completed_files():
@@ -64,11 +70,11 @@ def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3):
             )
             with open(mp3, "wb") as out:
                 out.write(response.audio_content)
-            print(f"Audio content written to file '{
-                  mp3}' (Attempt {attempt+1})")
+            logger.info(f"OK '{
+                mp3}' (Attempt {attempt+1})")
             return
         except Exception as e:
-            print(f"Error synthesizing text (Attempt {attempt+1}): {e}")
+            logger.error(f"Error synthesizing text (Attempt {attempt+1}): {e}")
             time.sleep(3)
             if attempt == 4:
                 raise  # Re-raise on the last attempt
@@ -77,7 +83,7 @@ def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3):
 def concatenate_audio(mp3_directory, output_folder, chapter_index):
     output_file_path = f'{output_folder}/chapter_{chapter_index}.mp3'
     if os.path.exists(output_file_path):
-        print(f'skip {output_file_path} because it already exists')
+        logger.debug(f'skip {output_file_path} because it already exists')
         return
     mp3_files = get_completed_files(mp3_directory)
     if len(mp3_files) == 0:
@@ -88,7 +94,7 @@ def concatenate_audio(mp3_directory, output_folder, chapter_index):
             os.path.join(mp3_directory, mp3_file))
         combined += current_track
     combined.export(output_file_path, format="mp3")
-    print(f"The concatenated MP3 has been saved to {output_file_path}")
+    logger.info(f"The concatenated MP3 has been saved to {output_file_path}")
 
 
 def main():
@@ -107,13 +113,14 @@ def main():
 
         succeeded = True
         # sort text by index
+        i = ''
         texts = sorted(texts, key=lambda x: x['index'])
         for c in texts:
             i = c['index']
             # Check if chapter already completed based on files
             mp3 = os.path.join(mp3_directory, f"{i}.mp3")
             if i in completed_files and os.path.exists(mp3):
-                print(
+                logger.debug(
                     f"paragraph {i} already completed, skipping...")
                 continue
             text = clean_text(c['text'])
@@ -123,12 +130,12 @@ def main():
                 completed_files[i] = True
                 save_completed_files(completed_files)
             except Exception as e:
-                print(f"Failed to process paragraph {i}: {e}")
+                logger.error(f"Failed to process paragraph {i}: {e}")
                 succeeded = False
                 break  # Break out of the inner loop for this chapter
 
         if not succeeded:
-            print(f'failed at {chapter_index}')
+            logger.error(f'failed at chapter_{chapter_index}->paragraph_{i}')
             break
         concatenate_audio(mp3_directory, output_folder, chapter_index)
 
@@ -136,4 +143,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.info('start')
     main()
