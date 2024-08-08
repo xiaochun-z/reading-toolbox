@@ -32,7 +32,7 @@ chapter_pattern = r"^(CHAPTER\s+)(.+\s*)"
 chapter_index = 0
 
 if len(paragraphs) > 0:
-    data['chapter'].append({'paragraphs': []})
+    data['chapter'].append({'paragraphs': [],'chapter_index': str(chapter_index).zfill(5)})
 
 longest_paragraph = max(paragraphs, key=len)
 # if paragraph is too long, it might fail when doing text to speech.
@@ -52,12 +52,12 @@ for i, paragraph in enumerate(paragraphs):
         continue
     m = re.match(chapter_pattern, p)
     if m:
-        data['chapter'].append(
-            {'paragraphs': [], 'chapter_title': m.group(2), 'chapter_index': chapter_index})
-        print(f"Chapter {chapter_index}: {m.group(2)}")
         chapter_index += 1
+        data['chapter'].append(
+            {'paragraphs': [], 'chapter_title': m.group(2), 'chapter_index': str(chapter_index).zfill(5)})
+        print(f"Chapter {chapter_index}: {m.group(2)}")
 
-    data['chapter'][-1]['paragraphs'].append({'index': i, 'text': p})
+    data['chapter'][-1]['paragraphs'].append({'index': str(i).zfill(7), 'text': p})
 
 # save to file
 # import json
