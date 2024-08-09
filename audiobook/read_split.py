@@ -48,12 +48,14 @@ if len(long_paragrahs) > 0:
     for p in long_paragrahs:
         print(p)
 merged_p = ''
-for i, paragraph in enumerate(paragraphs):
+i = 0
+for paragraph in paragraphs:
     p = paragraph.strip()
     m = re.match(chapter_pattern, p)
     if (len(p) + len(merged_p) < 1000) and not m:  # merge paragraphs if they are less than 1kb
         merged_p = merged_p.strip() + '\n' + p.strip()
     else:
+        i += 1
         data['chapter'][-1]['paragraphs'].append(
             {'index': str(i).zfill(7), 'text': merged_p.strip()})
         merged_p = p
@@ -64,6 +66,7 @@ for i, paragraph in enumerate(paragraphs):
         print(f"Chapter {chapter_index}: {m.group(2)}")
 
 if len(merged_p) > 0:
+    i += 1
     data['chapter'][-1]['paragraphs'].append(
         {'index': str(i).zfill(7), 'text': merged_p})
     merged_p = ''
