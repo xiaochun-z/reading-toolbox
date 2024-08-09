@@ -32,11 +32,13 @@ chapter_pattern = r"^(CHAPTER\s+)(.+\s*)"
 chapter_index = 0
 
 if len(paragraphs) > 0:
-    data['chapter'].append({'paragraphs': [],'chapter_index': str(chapter_index).zfill(5)})
+    data['chapter'].append(
+        {'paragraphs': [], 'chapter_index': str(chapter_index).zfill(5)})
 
 longest_paragraph = max(paragraphs, key=len)
 # if paragraph is too long, it might fail when doing text to speech.
-print(f'debug info: longest paragraph: \n{longest_paragraph}')
+print(
+    f'debug info: longest paragraph({len(longest_paragraph)}): \n{longest_paragraph}')
 
 # find paragraphs which are longer than 2kb
 long_paragrahs = [
@@ -45,19 +47,26 @@ if len(long_paragrahs) > 0:
     print(f'there are {len(longest_paragraph)} which are longer than 2kb, keep in mind long paragraph conversion might lead to failure when doing text to speech.')
     for p in long_paragrahs:
         print(p)
-
+merged_p = ''
 for i, paragraph in enumerate(paragraphs):
     p = paragraph.strip()
-    if len(p) == 0:
-        continue
     m = re.match(chapter_pattern, p)
+    if (len(p) + len(merged_p) < 1000) and not m:  # merge paragraphs if they are less than 1kb
+        merged_p = merged_p.strip() + '\n' + p.strip()
+    else:
+        data['chapter'][-1]['paragraphs'].append(
+            {'index': str(i).zfill(7), 'text': merged_p.strip()})
+        merged_p = p
     if m:
         chapter_index += 1
         data['chapter'].append(
             {'paragraphs': [], 'chapter_title': m.group(2), 'chapter_index': str(chapter_index).zfill(5)})
         print(f"Chapter {chapter_index}: {m.group(2)}")
 
-    data['chapter'][-1]['paragraphs'].append({'index': str(i).zfill(7), 'text': p})
+if len(merged_p) > 0:
+    data['chapter'][-1]['paragraphs'].append(
+        {'index': str(i).zfill(7), 'text': merged_p})
+    merged_p = ''
 
 # save to file
 # import json
