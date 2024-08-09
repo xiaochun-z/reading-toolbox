@@ -17,7 +17,7 @@ def load_completed_files():
     try:
         with open('completed_chapters.json', 'r') as f:
             return json.load(f)
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
@@ -70,8 +70,7 @@ def synthesize_and_save_text(text, chapter_index, output_folder, i, mp3):
             )
             with open(mp3, "wb") as out:
                 out.write(response.audio_content)
-            logger.info(f"OK '{
-                mp3}' (Attempt {attempt+1})")
+            logger.info(f"OK '{mp3}'{' (Attempt ' + str(attempt + 1) + ')' if attempt > 0 else ''}")
             return
         except Exception as e:
             logger.error(f"Error synthesizing text (Attempt {attempt+1}): {e}")
@@ -94,7 +93,7 @@ def concatenate_audio(mp3_directory, output_folder, chapter_index):
             os.path.join(mp3_directory, mp3_file))
         combined += current_track
     combined.export(output_file_path, format="mp3")
-    logger.info(f"Merged {output_file_path}")
+    logger.info(f"Merged '{output_file_path}'")
 
 
 def main():
